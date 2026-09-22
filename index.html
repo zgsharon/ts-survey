@@ -291,6 +291,15 @@
         <div class="hint" style="margin-top:0;flex:1 1 200px">Short phrases are fine. This goes in the report as written.</div>
       </div>
     </div>
+    <div class="sub-fields" id="tidyPanel" hidden>
+      <div class="lbl" id="tidyTitle">Suggested wording</div>
+      <div id="tidyRows"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn small" id="tidyAll" type="button">Use all</button>
+        <button class="btn small" id="tidyClose" type="button">Close</button>
+      </div>
+      <div class="hint">Only spelling, grammar and sentence form are changed. Check that no facts moved. Nothing is applied until you tap Use.</div>
+    </div>
     <div class="slot" data-slot="other" data-caption="Other"></div>
   </section>
 
@@ -308,7 +317,7 @@
     <div class="hint">Urgent adds _URGENT to the file name so it stands out in the folder and the log.</div>
   </section>
 
-  <section class="card">
+  <section class="card" id="narrCard" hidden>
     <h2>Report text</h2>
     <div class="narr" id="narrView"></div>
     <textarea id="narrEdit" hidden style="margin-top:8px;min-height:220px"></textarea>
@@ -316,15 +325,6 @@
       <button class="btn small" id="editNarr" type="button">Edit wording</button>
       <button class="btn small" id="resetNarr" type="button" hidden>Back to automatic text</button>
       <button class="btn small" id="tidyBtn" type="button" hidden>Tidy my notes</button>
-    </div>
-    <div class="sub-fields" id="tidyPanel" hidden>
-      <div class="lbl" id="tidyTitle">Suggested wording</div>
-      <div id="tidyRows"></div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn small" id="tidyAll" type="button">Use all</button>
-        <button class="btn small" id="tidyClose" type="button">Close</button>
-      </div>
-      <div class="hint">Only spelling, grammar and sentence form are changed. Check that no facts moved. Nothing is applied until you tap Use.</div>
     </div>
     <div class="hint" id="narrHint">This text is built from your answers above and updates as you change them.</div>
   </section>
@@ -490,8 +490,7 @@
     body += '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/>' +
       '<w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="0"/></w:tblPr>' +
       '<w:tblGrid><w:gridCol w:w="6975"/><w:gridCol w:w="6975"/></w:tblGrid>';
-    body += narrativeCell(opts.narrative);
-    body += emptyRow();
+    if (String(opts.narrative || '').trim()) { body += narrativeCell(opts.narrative); body += emptyRow(); }
     for (let i = 0; i < photos.length; i += 2) {
       const a = i + 1, b = i + 2 <= photos.length ? i + 2 : 0;
       body += '<w:tr><w:trPr><w:jc w:val="center"/></w:trPr>' + picCell(a, 'rIdP' + a) + picCell(b, b ? 'rIdP' + b : null) + '</w:tr>';
@@ -1103,6 +1102,7 @@
     if (!wiresOn()) B.push({ kind: 'kv', title: 'Wires at the terminal board', pairs: [['Wires', 'Could not check', 'warn']] });
     else if (wr.length) B.push({ kind: 'list', title: 'Wires at the terminal board', headers: ['Terminal', 'Wire from', 'Condition'], widths: [2500, 7450, 4000], rows: wr.map(r => [r.term, r.wire, { text: r.cond, tone: r.cond === 'Good' ? 'good' : r.cond ? 'warn' : '', bold: 1 }]) });
     B.push({ kind: 'kv', title: 'Recommendation', pairs: [['Recommended action', d.RecommendedAction], ['Size of repair', d.RecommendedAction && d.RecommendedAction !== 'No action' ? d.RepairSize : ''], ['Note', d.ActionNote]] });
+    if (d.Notes) B.push({ kind: 'kv', title: 'Notes', pairs: [['Anything else', d.Notes]] });
     B.push({ kind: 'signoff', text: d.SignOff, tone: seg.signoff === 'doc' ? 'good' : 'warn', note: d.SignOffNote });
     return B;
   }
@@ -1120,7 +1120,7 @@
       const opts = {
         client: $('client').value.trim(), project: $('project').value.trim(), docTitle: $('docTitle').value.trim(),
         line3: fmtDate(data.Date) + ' - ' + data.Pipeline + ' - ' + data.TestStationIdField,
-        narrative: data.ReportText, blocks: buildBlocks(data), data,
+        narrative: '', blocks: buildBlocks(data), data,
         photos: orderedPhotos().map(p => ({ data: p.buf || p.blob, caption: p.caption === 'Other' ? (p.custom || '') : p.caption }))
       };
       if (typeof JSZip === 'undefined') throw new Error('the Word file builder did not load. Check the phone has signal, then reload the page');
