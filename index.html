@@ -167,24 +167,23 @@
     <div class="field"><label class="lbl" for="client">Client (header line 1)</label><input type="text" id="client" value="Jordan Valley Water Conservancy District"></div>
     <div class="field"><label class="lbl" for="project">Project (header line 2)</label><input type="text" id="project" value="JVWCD 2026 Annual CP Surveys"></div>
     <div class="field"><label class="lbl" for="docTitle">Document title (header line 4)</label><input type="text" id="docTitle" value="Broken Test Station Report"></div>
-    <div class="field"><label class="lbl" for="inspector">Surveyed by (you) <span class="req">*</span></label><input type="text" id="inspector" value="" placeholder="Your name" autocomplete="name"></div>
-    <div class="field"><label class="lbl" for="pipelines">Pipelines for the dropdown (separate with commas)</label><textarea id="pipelines" rows="1" class="grow">Jordan Aqueduct Reach 3, Jordan Aqueduct Reach 4</textarea>
-      <div class="hint">Other is always at the end of the list.</div></div>
+    <div class="field"><label class="lbl" for="pipelines">Edit the pipeline list (separate with commas)</label><textarea id="pipelines" rows="1" class="grow">Jordan Aqueduct Reach 3, Jordan Aqueduct Reach 4</textarea>
+      <div class="hint">This only changes the choices. You pick the pipeline under Test station below. Other is always at the end of the list.</div></div>
     <div class="field"><label class="lbl" for="namesICG">ICG names for the one-tap buttons (separate with commas)</label><input type="text" id="namesICG" value="Read Arnold, Alex Alley, Chris Sumsion"></div>
     <div class="hint">These stay the same for every report on this phone.</div>
   </details>
 
   <section class="card">
     <h2>Test station</h2>
-    <div class="row">
-      <div class="field">
-        <label class="lbl" for="date">Date found</label>
-        <input type="date" id="date">
-      </div>
-      <div class="field">
-        <label class="lbl" for="pipeline">Pipeline or system</label>
-        <select id="pipeline"></select>
-      </div>
+    <div class="field"><label class="lbl" for="inspector">Surveyed by (your name) <span class="req">*</span></label><input type="text" id="inspector" value="" placeholder="Your name" autocomplete="name">
+      <div class="hint">Saved on this phone. Type it once.</div></div>
+    <div class="field">
+      <label class="lbl" for="pipeline">Pipeline or system</label>
+      <select id="pipeline"></select>
+    </div>
+    <div class="field">
+      <label class="lbl" for="date">Date found</label>
+      <input type="date" id="date">
     </div>
     <div class="sub-fields" id="pipelineOtherBox" hidden><label class="lbl" for="pipelineOther">Which pipeline or system</label><input type="text" id="pipelineOther" placeholder="Example: Southwest Aqueduct" autocomplete="off"></div>
     <div class="row">
@@ -883,7 +882,7 @@
     toggleBoxes(); growAll();
     if (!narrEdited) $('narrView').textContent = buildNarrative();
     $('projLine').textContent = $('project').value;
-    $('settingsNote').textContent = $('inspector').value.trim() ? $('inspector').value.trim() : 'add your name';
+    $('settingsNote').textContent = '';
     updateBar(); saveDraft();
   }
   function slug(s, n) { return String(s || '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, n); }
@@ -1109,7 +1108,7 @@
 
   $('makeBtn').addEventListener('click', async () => {
     if (!$('tsField').value.trim()) { toast('Enter the test station ID first.'); $('tsField').focus(); $('tsField').scrollIntoView({ block: 'center' }); return; }
-    if (!$('inspector').value.trim()) { toast('Add your name in Project settings first.'); $('settings').open = true; $('inspector').focus(); $('settings').scrollIntoView({ block: 'start' }); return; }
+    if (!$('inspector').value.trim()) { toast('Type your name at the top first.'); $('inspector').focus(); $('inspector').scrollIntoView({ block: 'center' }); return; }
     if ($('pipeline').value === 'Other' && !$('pipelineOther').value.trim()) { toast('Type which pipeline or system this is.'); $('pipelineOther').focus(); return; }
     if (!photos.length && !noPhotoOk) { noPhotoOk = true; toast('No photos added. Tap Make report again to build it without photos.'); setTimeout(() => { noPhotoOk = false; }, 6000); return; }
     noPhotoOk = false;
@@ -1186,7 +1185,6 @@
     document.querySelectorAll('textarea').forEach(t => t.addEventListener('input', () => grow(t)));
     document.querySelectorAll('#condChips button').forEach(b => { if (!b.hasAttribute('aria-pressed')) b.setAttribute('aria-pressed', 'false'); b.addEventListener('click', () => { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); onChange(); }); });
     SETTING_IDS.forEach(id => $(id).addEventListener('input', () => { saveSettings(); if (id === 'namesICG') renderCompanies(); if (id === 'pipelines') renderPipelines(); onChange(); }));
-    if (!$('inspector').value.trim()) $('settings').open = true;
     renderLog(); renderPhotos(); syncNarrUI(); onChange(); growAll(); setTimeout(growAll, 300);
     checkNewDay(); $('date').addEventListener('change', checkNewDay);
     loadPhotos().then(() => { if (photos.length) { renderPhotos(); } });
