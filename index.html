@@ -167,7 +167,7 @@
     <div class="field"><label class="lbl" for="client">Client (header line 1)</label><input type="text" id="client" value="Jordan Valley Water Conservancy District"></div>
     <div class="field"><label class="lbl" for="project">Project (header line 2)</label><input type="text" id="project" value="JVWCD 2026 Annual CP Surveys"></div>
     <div class="field"><label class="lbl" for="docTitle">Document title (header line 4)</label><input type="text" id="docTitle" value="Broken Test Station Report"></div>
-    <div class="field"><label class="lbl" for="pipelines">Edit the pipeline list (separate with commas)</label><textarea id="pipelines" rows="1" class="grow">Jordan Aqueduct Reach 3, Jordan Aqueduct Reach 4</textarea>
+    <div class="field"><label class="lbl" for="pipelines">Edit the pipeline list (separate with commas)</label><textarea id="pipelines" rows="1" class="grow">7800 South, 90th South, 102nd South Bingham Creek, 102nd South Zone B, 102nd South Zone C, 114th South, 118th South, 118th South U111, 134th South, 146th South, 150th South, 3200 West CPS#1, 3200 West SWA CPS#2, AA3 - JA4, CPP 48-inch, JA1, JA2, JA3, JNPL, SWA1, SWA2, SWGWTP, Zone C Facility, Zone D Pipeline, Zone D Pump Station, Zone D Reservoir</textarea>
       <div class="hint">This only changes the choices. You pick the pipeline under Test station below. Other is always at the end of the list.</div></div>
     <div class="field"><label class="lbl" for="namesICG">ICG names for the one-tap buttons (separate with commas)</label><input type="text" id="namesICG" value="Read Arnold, Alex Alley, Chris Sumsion"></div>
     <div class="hint">These stay the same for every report on this phone.</div>
@@ -576,6 +576,7 @@
     sel.innerHTML = '';
     const list = pipelineList();
     if (cur && !list.includes(cur)) list.splice(list.length - 1, 0, cur);
+    const blank = document.createElement('option'); blank.value = ''; blank.textContent = 'Pick the pipeline'; sel.appendChild(blank);
     list.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o); });
     if (cur && list.includes(cur)) sel.value = cur;
   }
@@ -932,7 +933,7 @@
   }
   function saveDraft() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(snapshot())); } catch (e) {} }
   function saveSettings() { try { const o = {}; SETTING_IDS.forEach(id => o[id] = $(id).value); localStorage.setItem(SETTINGS_KEY, JSON.stringify(o)); } catch (e) {} }
-  function loadSettings() { try { const o = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); if (o) SETTING_IDS.forEach(id => { if (o[id] != null && !((id === 'namesICG' || id === 'pipelines') && !String(o[id]).trim())) $(id).value = o[id]; }); } catch (e) {} }
+  function loadSettings() { try { const o = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); if (o && o.pipelines === 'Jordan Aqueduct Reach 3, Jordan Aqueduct Reach 4') delete o.pipelines; if (o) SETTING_IDS.forEach(id => { if (o[id] != null && !((id === 'namesICG' || id === 'pipelines') && !String(o[id]).trim())) $(id).value = o[id]; }); } catch (e) {} }
 
   // ---------- narrative editing ----------
   function syncNarrUI() {
@@ -1109,6 +1110,7 @@
   $('makeBtn').addEventListener('click', async () => {
     if (!$('tsField').value.trim()) { toast('Enter the test station ID first.'); $('tsField').focus(); $('tsField').scrollIntoView({ block: 'center' }); return; }
     if (!$('inspector').value.trim()) { toast('Type your name at the top first.'); $('inspector').focus(); $('inspector').scrollIntoView({ block: 'center' }); return; }
+    if (!$('pipeline').value) { toast('Pick the pipeline first.'); $('pipeline').focus(); $('pipeline').scrollIntoView({ block: 'center' }); return; }
     if ($('pipeline').value === 'Other' && !$('pipelineOther').value.trim()) { toast('Type which pipeline or system this is.'); $('pipelineOther').focus(); return; }
     if (!photos.length && !noPhotoOk) { noPhotoOk = true; toast('No photos added. Tap Make report again to build it without photos.'); setTimeout(() => { noPhotoOk = false; }, 6000); return; }
     noPhotoOk = false;
