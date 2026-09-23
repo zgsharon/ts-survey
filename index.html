@@ -126,6 +126,11 @@
   @media (prefers-reduced-motion: no-preference) { .seg button, .chips button, .btn { transition: background-color .12s ease, border-color .12s ease; } }
 </style>
 <style>
+  .trow:has(.sig) { flex-wrap: nowrap; }
+  .trow .cell.sig { flex: 1 1 140px; }
+  .signed { display: flex; gap: 4px; }
+  .signed .sgn { flex: 0 0 auto; min-width: 46px; min-height: 42px; font: inherit; font-size: 20px; font-weight: 600; line-height: 1; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--accent); cursor: pointer; }
+  .signed input { flex: 1 1 auto; min-width: 0; }
   .gpsline { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
   .gpsline .field { flex: 1 1 130px; margin-block: 0; }
   .gpsline .btn { flex: 0 0 auto; min-height: 46px; }
@@ -578,7 +583,7 @@
   const TABLES = {
     readings: { cols: [
       { k: 'loc', label: 'Location or wire', type: 'text', wide: 1, ph: 'Pipe lead, terminal 1' },
-      { k: 'v', label: 'Potential V to CSE', type: 'num', ph: '-0.850' }] },
+      { k: 'v', label: 'Potential V to CSE', type: 'num', signed: true, ph: '0.850' }] },
     wires: { cols: [
       { k: 'term', label: 'Terminal', type: 'text', ph: '1' },
       { k: 'wire', label: 'Wire from', type: 'select', wide: 1, opts: ['', 'Pipe lead', 'Anode', 'Reference cell', 'Coupon', 'Bond', 'Casing', 'Spare'] },
@@ -752,11 +757,34 @@
     tables[key].forEach((r, idx) => {
       const row = document.createElement('div'); row.className = 'trow';
       def.cols.forEach(c => {
-        const cell = document.createElement('div'); cell.className = 'cell' + (c.wide ? ' wide' : '');
+        const cell = document.createElement('div'); cell.className = 'cell' + (c.wide ? ' wide' : '') + (c.signed ? ' sig' : '');
         const lab = document.createElement('div'); lab.className = 'lbl'; lab.textContent = c.label; cell.appendChild(lab);
         let inp;
         if (c.type === 'select') { inp = document.createElement('select'); c.opts.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o || 'Pick one'; if (o === r[c.k]) op.selected = true; inp.appendChild(op); }); }
         else { inp = document.createElement('input'); inp.type = c.type === 'num' ? 'number' : 'text'; if (c.type === 'num') { inp.inputMode = 'decimal'; inp.step = 'any'; } inp.placeholder = c.ph || ''; inp.value = r[c.k]; inp.autocomplete = 'off'; }
+        if (c.signed) {
+          // iPhone decimal keypad has no minus key. Sign button, default minus. r[c.k] stays a signed string.
+          const cur = String(r[c.k] == null ? '' : r[c.k]).trim();
+          let sign = cur.startsWith('+') || (cur !== '' && !cur.startsWith('-')) ? '+' : (r[c.k + 'Sign'] || '-');
+          const wrap = document.createElement('div'); wrap.className = 'signed';
+          const sb = document.createElement('button'); sb.type = 'button'; sb.className = 'sgn';
+          inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.placeholder = c.ph || ''; inp.autocomplete = 'off';
+          inp.value = cur.replace(/^[-+\u2212]/, '');
+          const paint = () => { sb.textContent = sign === '-' ? '\u2212' : '+'; sb.setAttribute('aria-label', (sign === '-' ? 'Negative' : 'Positive') + ', tap to change sign, row ' + (idx + 1)); };
+          const sync = () => {
+            let m = inp.value.replace(/,/g, '.').trim();
+            if (/^[-\u2212]/.test(m)) { sign = '-'; m = m.slice(1); inp.value = m; }
+            else if (m.startsWith('+')) { sign = '+'; m = m.slice(1); inp.value = m; }
+            r[c.k + 'Sign'] = sign; r[c.k] = m === '' ? '' : (sign === '-' ? '-' : '') + m; paint(); onChange();
+          };
+          sb.addEventListener('click', () => { sign = sign === '-' ? '+' : '-'; sync(); });
+          inp.addEventListener('input', sync); inp.addEventListener('change', sync);
+          paint();
+          inp.id = 'tbl_' + key + '_' + idx + '_' + c.k;
+          inp.setAttribute('aria-label', c.label + ' row ' + (idx + 1));
+          wrap.appendChild(sb); wrap.appendChild(inp); cell.appendChild(wrap); row.appendChild(cell);
+          return;
+        }
         inp.id = 'tbl_' + key + '_' + idx + '_' + c.k;
         inp.setAttribute('aria-label', c.label + ' row ' + (idx + 1));
         inp.addEventListener('input', () => { r[c.k] = inp.value; onChange(); });
