@@ -133,6 +133,17 @@
   .gpsacc.good { color: var(--good); } .gpsacc.warn { color: var(--warn); }
   .reccard dt { font-size: 12px; color: var(--muted); margin-top: 6px; } .reccard dd { margin: 0; font-size: 15px; }
   .donecard { border-color: var(--good) !important; background: var(--good-soft) !important; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: calc(71px + env(safe-area-inset-bottom, 0px)); z-index: 4; padding-inline: 12px; }
+  .sheet .inner { max-width: 640px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .sheet .t { font-size: 17px; font-weight: 600; }
+  .sheet.ok .inner { border-color: var(--good); background: var(--good-soft); }
+  .sheet.ok .t { color: var(--good); }
+  .sheet.warn .inner { border-color: var(--warn); background: var(--warn-soft); }
+  .sheet.warn .t { color: var(--warn); }
+  .sheet .msg { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+  .sheet .row { gap: 8px; }
+  .sheet .btn.primary { min-height: 50px; font-size: 16px; }
+  .toast { bottom: calc(260px + env(safe-area-inset-bottom, 0px)) !important; }
 </style>
 
 <div class="wrap">
@@ -159,7 +170,7 @@
   <section class="card" id="recentCard" hidden>
     <h2>Reports made on this phone</h2>
     <div class="recent" id="recentList"></div>
-    <div class="hint" style="margin-top:8px">Each report is saved as a Word file when you tap Make report. This list is only a record of what was made here. Reuse answers copies the pipeline, type and names from that report, so it asks for a second tap.</div>
+    <div class="hint" style="margin-top:8px">Each report is saved as a Word file when you tap Make report. This list is only a record of what was made here. Not sent means the share to Mail was never finished, so check that one. Reuse answers copies the pipeline, type and names from that report, so it asks for a second tap.</div>
     <div class="row" style="margin-top:8px"><button class="btn small" id="exportLog" type="button">Save log as CSV</button><button class="btn small" id="clearLog" type="button">Clear list</button></div>
   </section>
 
@@ -336,6 +347,19 @@
     <div class="hint" id="narrHint">This text is built from your answers above and updates as you change them.</div>
   </section>
 
+</div>
+
+<div class="sheet" id="sendSheet" hidden role="dialog" aria-labelledby="sendTitle">
+  <div class="inner">
+    <div class="t" id="sendTitle">Report ready</div>
+    <div class="msg" id="sendMsg"></div>
+    <div class="row">
+      <button class="btn primary" id="sendNow" type="button">Send by email</button>
+      <button class="btn primary" id="sendNext" type="button" hidden>Start next test station</button>
+      <button class="btn" id="sendClose" type="button">Close</button>
+    </div>
+    <button class="btn small" id="saveFiles" type="button">Save the files to this phone instead</button>
+  </div>
 </div>
 
 <div class="bar">
@@ -1144,7 +1168,8 @@
       const pill = document.createElement('span'); pill.className = 'pill ' + (r.flag ? 'warn' : 'good'); pill.textContent = r.signoff || 'Documented only';
       const use = document.createElement('button'); use.type = 'button'; use.className = 'btn small'; use.textContent = 'Reuse answers';
       armed(use, 'Reuse answers', () => { restore(r.snapshot, false); startNext(true); });
-      d.append(id, dt, sp, pill, use); list.appendChild(d);
+      const sent = document.createElement('span'); sent.className = 'pill ' + (r.sentAt ? 'good' : 'warn'); sent.textContent = r.sentAt ? 'Sent ' + clock(new Date(r.sentAt)) : 'Not sent';
+      d.append(id, dt, sp, sent, pill, use); list.appendChild(d);
     });
   }
   armed($('clearLog'), 'Clear list', () => { writeLog([]); renderLog(); });
@@ -1175,20 +1200,58 @@
       return true;
     } catch (e) { toast('Could not save the file (' + ((e && e.message) || 'unknown') + ').'); return false; }
   }
+  // Returns 'shared', 'cancelled', 'unsupported', or an Error.
   async function shareLast() {
-    if (!lastBuilt) return false;
-    try {
-      const files = [new File([lastBuilt.docxBlob], lastBuilt.docxName, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
-        new File([lastBuilt.jsonText], lastBuilt.jsonName, { type: 'application/json' })];
-      if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: lastBuilt.docxName }); return true; }
-    } catch (e) { if (e && e.name === 'AbortError') return false; }
-    return false;
+    if (!lastBuilt) return 'unsupported';
+    const files = [new File([lastBuilt.docxBlob], lastBuilt.docxName, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+      new File([lastBuilt.jsonText], lastBuilt.jsonName, { type: 'application/json' })];
+    if (!(navigator.canShare && navigator.canShare({ files }))) return 'unsupported';
+    try { await navigator.share({ files, title: lastBuilt.docxName }); return 'shared'; }
+    catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; return e || new Error('unknown'); }
   }
-  $('sendBtn').addEventListener('click', async () => {
+  const SEND_TO = 'zsharon@infinitycorrosiongroup.onmicrosoft.com';
+  function clock(d) { d = d || new Date(); let h = d.getHours(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + ap; }
+  function showSheet(state, detail) {
+    const s = $('sendSheet'), name = lastBuilt ? lastBuilt.docxName : '';
+    s.className = 'sheet' + (state === 'sent' ? ' ok' : (state === 'cancelled' || state === 'error' || state === 'unsupported') ? ' warn' : '');
+    $('sendNow').hidden = state === 'sent'; $('sendNext').hidden = state !== 'sent';
+    $('sendNow').textContent = state === 'ready' ? 'Send by email' : 'Try again';
+    $('saveFiles').hidden = state === 'sent';
+    const T = { ready: 'Report ready', sent: 'Handed to Mail', cancelled: 'Not sent yet', error: 'Could not open the share menu', unsupported: 'This browser cannot share files' };
+    const M = {
+      ready: name + '. Tap Send by email, pick Mail, and send it to ' + SEND_TO + '. Copy yourself.',
+      sent: 'Opened Mail at ' + clock() + '. If you tapped Send there, it is on its way. The copy to yourself showing up in your inbox confirms it went.',
+      cancelled: 'The share menu closed without sending. Tap Try again.',
+      error: 'The phone said: ' + ((detail && (detail.message || detail.name)) || 'unknown') + '. Tap Try again. If it keeps failing, save the files and attach them to an email from the Files app.',
+      unsupported: 'Save the files, then attach both to an email to ' + SEND_TO + ' from the Files app.'
+    };
+    $('sendTitle').textContent = T[state]; $('sendMsg').textContent = M[state];
+    s.hidden = false; $('sendBtn').hidden = true;
+  }
+  function hideSheet() { $('sendSheet').hidden = true; $('sendBtn').hidden = !lastBuilt; }
+  function markSent() {
     if (!lastBuilt) return;
-    const ok = await shareLast();
-    if (!ok) { await deliver(lastBuilt.docxName, lastBuilt.docxBlob); await deliver(lastBuilt.jsonName, lastBuilt.jsonText); }
+    const log = readLog(); const r = log.find(x => x.made === lastBuilt.made);
+    if (r) { r.sentAt = new Date().toISOString(); writeLog(log); renderLog(); }
+  }
+  $('sendNow').addEventListener('click', async () => {
+    $('sendNow').disabled = true;
+    try {
+      const res = await shareLast();
+      if (res === 'shared') { markSent(); showSheet('sent'); }
+      else if (res === 'cancelled') showSheet('cancelled');
+      else if (res === 'unsupported') showSheet('unsupported');
+      else showSheet('error', res);
+    } finally { $('sendNow').disabled = false; }
   });
+  $('sendNext').addEventListener('click', () => { hideSheet(); startNext(false); });
+  $('sendClose').addEventListener('click', hideSheet);
+  $('saveFiles').addEventListener('click', async () => {
+    if (!lastBuilt) return;
+    const ok = await deliver(lastBuilt.docxName, lastBuilt.docxBlob);
+    if (ok) { await deliver(lastBuilt.jsonName, lastBuilt.jsonText); toast('Files saved. Attach both to an email to ' + SEND_TO + '.'); }
+  });
+  $('sendBtn').addEventListener('click', () => { if (lastBuilt) showSheet('ready'); });
 
   function buildData() {
     const rd = readingRows(), wr = wireRows();
@@ -1256,17 +1319,13 @@
       const blob = await buildDocx(opts, TEMPLATE_B64);
       const filename = data.ReportFile;
       lastBuilt = { docxBlob: blob, docxName: filename, jsonText: JSON.stringify(data, null, 2), jsonName: data.ReportName + '.json' };
-      $('sendBtn').hidden = false;
-      let ok = await shareLast();
-      if (!ok) { ok = await deliver(filename, blob); if (ok) await deliver(lastBuilt.jsonName, lastBuilt.jsonText); if (ok && !downloadsNs) toast('Report built. Look for the download prompt, or check Files > Downloads.'); }
-      if (ok) {
-        const log = readLog();
-        const snap = snapshot(); snap.madeName = '';
-        log.push({ station: data.TestStationIdField, pipeline: data.Pipeline, date: data.Date, made: data.MadeOn, flag: seg.signoff !== 'doc', signoff: data.SignOff, photos: photos.length, data, snapshot: snap });
-        writeLog(log); renderLog();
-        madeName = filename; $('nextName').textContent = data.TestStationIdField; $('nextCard').hidden = false; $('newDayCard').hidden = true; saveDraft();
-        toast('Report saved: ' + filename);
-      }
+      const log = readLog();
+      const snap = snapshot(); snap.madeName = '';
+      log.push({ station: data.TestStationIdField, pipeline: data.Pipeline, date: data.Date, made: data.MadeOn, flag: seg.signoff !== 'doc', signoff: data.SignOff, photos: photos.length, data, snapshot: snap });
+      writeLog(log); renderLog();
+      lastBuilt.made = data.MadeOn;
+      madeName = filename; $('nextName').textContent = data.TestStationIdField; $('nextCard').hidden = false; $('newDayCard').hidden = true; saveDraft();
+      showSheet('ready');
     } catch (e) { console.error(e); toast('Could not build the report: ' + ((e && e.message) || e) + '. If it mentions a photo, remove and re-add the photos.'); }
     finally { $('makeBtn').disabled = false; updateBar(); }
   });
@@ -1284,7 +1343,7 @@
     tables.readings = []; addRow('readings');
     tables.wires = []; addRow('wires', { term: '1' });
     narrEdited = false; syncNarrUI(); renderAllTables();
-    $('newDayCard').hidden = true; $('nextCard').hidden = true; $('sendBtn').hidden = true; lastBuilt = null;
+    $('newDayCard').hidden = true; $('nextCard').hidden = true; $('sendBtn').hidden = true; $('sendSheet').hidden = true; lastBuilt = null;
     onChange(); window.scrollTo({ top: 0 });
     if (!quiet) toast('Ready for the next test station. Pipeline, type and names are kept.');
     else toast('Pipeline, type and names copied. Fill in this test station.');
