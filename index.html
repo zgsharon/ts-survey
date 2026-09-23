@@ -653,6 +653,7 @@
   }
   function myFix() { const la = parseFloat($('lat').value), ln = parseFloat($('lng').value); return (gpsSource === 'GPS' || gpsSource === 'Pasted') && !isNaN(la) && !isNaN(ln) ? [la, ln] : null; }
   function recCurrent() { return recSel && REC[recSel.line] ? REC[recSel.line][recSel.i] : null; }
+  function recIdText(line, s) { const l = REC[line] || []; return l.filter(x => x.id === s.id).length > 1 && s.sta && s.sta !== s.id ? s.id + ' at Sta ' + s.sta : s.id; }
   function tsName(s) { return s.nots ? (/^\d+\+\d/.test(s.id) ? 'Sta ' + s.id : s.id) : 'TS ' + s.id; }
   function recLabel(s) { return tsName(s) + (s.sta && s.sta !== s.id ? ' · Sta ' + s.sta : '') + (s.loc && s.loc !== s.id ? ' · ' + (s.loc.length > 48 ? s.loc.slice(0, 46) + '…' : s.loc) : ''); }
   function renderRecs() {
@@ -665,14 +666,21 @@
       sel.disabled = false;
       const fix = myFix();
       add('', 'Pick a station (' + list.length + ' on file)');
-      list.forEach((s, i) => add(String(i), recLabel(s) + (fix && s.lat != null ? ' (' + fmtFt(distFt(fix[0], fix[1], s.lat, s.lng)) + ')' : '')));
+      const labels = list.map(recLabel), cnt = {};
+      labels.forEach(l => { cnt[l] = (cnt[l] || 0) + 1; });
+      const seenL = {};
+      list.forEach((s, i) => {
+        let l = labels[i];
+        if (cnt[l] > 1) { seenL[l] = (seenL[l] || 0) + 1; l += ' (entry ' + seenL[l] + ' of ' + cnt[l] + ')'; }
+        add(String(i), l + (s.cchk ? ' (coordinates on file look wrong)' : fix && s.lat != null ? ' (' + fmtFt(distFt(fix[0], fix[1], s.lat, s.lng)) + ')' : ''));
+      });
       add('none', 'Not in our records');
     }
     sel.value = recSel && recSel.line === line ? String(recSel.i) : (recSel && recSel.none ? 'none' : '');
     renderRecCard();
   }
   function fmtFt(ft) { return ft >= 5280 ? (ft / 5280).toFixed(1) + ' mi' : Math.round(ft) + ' ft'; }
-  function recDistance() { const s = recCurrent(), fix = myFix(); return s && fix && s.lat != null ? distFt(fix[0], fix[1], s.lat, s.lng) : null; }
+  function recDistance() { const s = recCurrent(), fix = myFix(); return s && fix && s.lat != null && !s.cchk ? distFt(fix[0], fix[1], s.lat, s.lng) : null; }
   function renderRecCard() {
     const card = $('recCard'), s = recCurrent();
     if (!s) { card.hidden = true; card.innerHTML = ''; return; }
@@ -682,9 +690,9 @@
     put('Location', s.loc);
     put('Style', [s.style, s.type ? 'type ' + s.type : ''].filter(Boolean).join(', '));
     put('Wires on file', (s.w || []).join(', '));
-    put('Coordinates on file', s.lat != null ? s.lat + ', ' + s.lng : 'none on file');
+    put('Coordinates on file', s.lat != null ? s.lat + ', ' + s.lng + (s.cchk ? '. These look wrong: ' + s.cchk + '. Go by the location, and your GPS point will be the corrected one.' : '') + (s.cnote ? ' (' + s.cnote + ')' : '') : 'none on file');
     const d = recDistance();
-    if (d != null) put('Your GPS point is', fmtFt(d) + ' from the coordinates on file' + (d > NEAR_FT ? '. Check this is the right station.' : '.'));
+    if (d != null && !s.cchk) put('Your GPS point is', fmtFt(d) + ' from the coordinates on file' + (d > NEAR_FT ? '. Check this is the right station.' : '.'));
     card.innerHTML = ''; card.appendChild(dl); card.hidden = false;
   }
   function styleToType(st) {
@@ -697,15 +705,15 @@
     const s = (REC[line] || [])[i]; if (!s) return;
     recSel = { line, i, auto: !!auto };
     const prevRec = $('tsRecords').value.trim();
-    if (!$('tsField').value.trim() || $('tsField').value.trim() === prevRec) $('tsField').value = s.id;
-    $('tsRecords').value = s.id;
+    if (!$('tsField').value.trim() || $('tsField').value.trim() === prevRec) $('tsField').value = recIdText(line, s);
+    $('tsRecords').value = recIdText(line, s);
     const t = styleToType(s.style); if (t) setSeg('tsType', t);
-    if (!$('lat').value.trim() && !$('lng').value.trim() && s.lat != null) { $('lat').value = String(s.lat); $('lng').value = String(s.lng); gpsSource = 'Records'; gpsAccFt = ''; setGpsAcc(); }
+    if (!$('lat').value.trim() && !$('lng').value.trim() && s.lat != null && !s.cchk) { $('lat').value = String(s.lat); $('lng').value = String(s.lng); gpsSource = 'Records'; gpsAccFt = ''; setGpsAcc(); }
   }
   function nearestRec(fix, line) {
     let best = null;
     const lines = line && REC[line] ? [line] : Object.keys(REC);
-    lines.forEach(l => REC[l].forEach((s, i) => { if (s.lat == null) return; const d = distFt(fix[0], fix[1], s.lat, s.lng); if (!best || d < best.d) best = { line: l, i, d }; }));
+    lines.forEach(l => REC[l].forEach((s, i) => { if (s.lat == null || s.cchk) return; const d = distFt(fix[0], fix[1], s.lat, s.lng); if (!best || d < best.d) best = { line: l, i, d }; }));
     return best;
   }
   function autoPickFromGps() {
@@ -1268,7 +1276,7 @@
       Date: $('date').value, Pipeline: pipelineText(), TestStationIdField: $('tsField').value.trim(), TestStationIdRecords: $('tsRecords').value.trim(), IdMarkedOn: seg.idMark || '',
       Latitude: $('lat').value.trim(), Longitude: $('lng').value.trim(), GpsAccuracyFt: gpsSource === 'GPS' ? gpsAccFt : '', GpsSource: gpsSource,
       RecordsTestNo: (recCurrent() || {}).id || '', RecordsDistrictId: (recCurrent() || {}).did || '', RecordsStation: (recCurrent() || {}).sta || '',
-      RecordsLocation: (recCurrent() || {}).loc || '', RecordsLat: recCurrent() && recCurrent().lat != null ? String(recCurrent().lat) : '', RecordsLng: recCurrent() && recCurrent().lng != null ? String(recCurrent().lng) : '',
+      RecordsLocation: (recCurrent() || {}).loc || '', RecordsLat: recCurrent() && recCurrent().lat != null ? String(recCurrent().lat) : '', RecordsCoordsCheck: (recCurrent() || {}).cchk || '', RecordsLng: recCurrent() && recCurrent().lng != null ? String(recCurrent().lng) : '',
       RecordsWires: ((recCurrent() || {}).w || []).join(', '), DistanceFromRecordsFt: recDistance() != null ? String(Math.round(recDistance())) : '',
       RecordsPicked: recSel && recSel.none ? 'Not in records' : recSel ? (recSel.auto ? 'Closest to GPS' : 'Picked by hand') : '',
       TestStationType: tsTypeText(),
@@ -1292,7 +1300,7 @@
   function buildBlocks(d) {
     const B = [];
     const rec = d.TestStationIdRecords && d.TestStationIdRecords !== d.TestStationIdField ? d.TestStationIdRecords : '';
-    B.push({ kind: 'kv', title: 'Test station', pairs: [['Date found', fmtDate(d.Date)], ['Pipeline or system', d.Pipeline], ['ID as marked', d.TestStationIdField], ['ID in our records', rec], ['ID marked on', d.IdMarkedOn], ['Type', d.TestStationType], ['Latitude', d.Latitude], ['Longitude', d.Longitude], ['GPS accuracy', d.GpsAccuracyFt ? 'about ' + d.GpsAccuracyFt + ' ft' : (d.GpsSource === 'Pasted' ? 'pasted from Maps' : d.GpsSource === 'Records' ? 'no GPS, coordinates from records' : '')], ['Records location', d.RecordsLocation], ['Records stationing', d.RecordsStation], ['Distance from records', d.DistanceFromRecordsFt ? d.DistanceFromRecordsFt + ' ft' : '', Number(d.DistanceFromRecordsFt) > 500 ? 'warn' : ''], ['Wires on file', d.RecordsWires], ['Surveyed by', d.Inspector ? d.Inspector + ' (ICG)' : ''], ['Also on site', peopleFor('ICG').filter(n => n !== d.Inspector).join(', ')]] });
+    B.push({ kind: 'kv', title: 'Test station', pairs: [['Date found', fmtDate(d.Date)], ['Pipeline or system', d.Pipeline], ['ID as marked', d.TestStationIdField], ['ID in our records', rec], ['ID marked on', d.IdMarkedOn], ['Type', d.TestStationType], ['Latitude', d.Latitude], ['Longitude', d.Longitude], ['GPS accuracy', d.GpsAccuracyFt ? 'about ' + d.GpsAccuracyFt + ' ft' : (d.GpsSource === 'Pasted' ? 'pasted from Maps' : d.GpsSource === 'Records' ? 'no GPS, coordinates from records' : '')], ['Records location', d.RecordsLocation], ['Records stationing', d.RecordsStation], ['Distance from records', d.RecordsCoordsCheck ? 'not checked, coordinates on file look wrong (' + d.RecordsCoordsCheck + ')' : d.DistanceFromRecordsFt ? d.DistanceFromRecordsFt + ' ft' : '', d.RecordsCoordsCheck || Number(d.DistanceFromRecordsFt) > 500 ? 'warn' : ''], ['Wires on file', d.RecordsWires], ['Surveyed by', d.Inspector ? d.Inspector + ' (ICG)' : ''], ['Also on site', peopleFor('ICG').filter(n => n !== d.Inspector).join(', ')]] });
     B.push({ kind: 'kv', title: 'Condition', pairs: [['Found', d.Condition, d.Condition ? 'warn' : ''], ['Severity', d.Severity, seg.severity === 'usable' ? 'good' : seg.severity ? 'warn' : ''], ['Seen on an earlier survey', d.SeenBefore], ['Could reach it', d.Reached, d.Reached === 'No' ? 'warn' : ''], ['Where it is', d.AccessType], ['Access notes', d.AccessNote]] });
     const rd = readingRows();
     if (!readingsOn()) B.push({ kind: 'kv', title: 'Readings', pairs: [['Readings', 'No readings possible', 'warn']] });
