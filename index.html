@@ -1214,16 +1214,19 @@
   function showSheet(state, detail) {
     const s = $('sendSheet'), name = lastBuilt ? lastBuilt.docxName : '';
     s.className = 'sheet' + (state === 'sent' ? ' ok' : (state === 'cancelled' || state === 'error' || state === 'unsupported') ? ' warn' : '');
-    $('sendNow').hidden = state === 'sent'; $('sendNext').hidden = state !== 'sent';
+    const inClaude = window.self !== window.top || !!downloadsNs;
+    $('sendNow').hidden = state === 'sent' || state === 'unsupported'; $('sendNext').hidden = state !== 'sent';
     $('sendNow').textContent = state === 'ready' ? 'Send by email' : 'Try again';
     $('saveFiles').hidden = state === 'sent';
-    const T = { ready: 'Report ready', sent: 'Handed to Mail', cancelled: 'Not sent yet', error: 'Could not open the share menu', unsupported: 'This browser cannot share files' };
+    $('saveFiles').textContent = state === 'unsupported' ? 'Save the files' : 'Save the files to this phone instead';
+    $('saveFiles').className = state === 'unsupported' ? 'btn primary' : 'btn small';
+    const T = { ready: 'Report ready', sent: 'Handed to Mail', cancelled: 'Not sent yet', error: 'Could not open the share menu', unsupported: inClaude ? 'Mail cannot open from this copy' : 'This browser cannot share files' };
     const M = {
       ready: name + '. Tap Send by email, pick Mail, and send it to ' + SEND_TO + '. Copy yourself.',
       sent: 'Opened Mail at ' + clock() + '. If you tapped Send there, it is on its way. The copy to yourself showing up in your inbox confirms it went.',
       cancelled: 'The share menu closed without sending. Tap Try again.',
       error: 'The phone said: ' + ((detail && (detail.message || detail.name)) || 'unknown') + '. Tap Try again. If it keeps failing, save the files and attach them to an email from the Files app.',
-      unsupported: 'Save the files, then attach both to an email to ' + SEND_TO + ' from the Files app.'
+      unsupported: inClaude ? 'This is the claude.ai copy of the app, which cannot hand files to Mail. In the field, use the home screen link, zgsharon.github.io/ts-survey. To send this one, tap Save the files, then attach both to an email to ' + SEND_TO + '.' : 'Save the files, then attach both to an email to ' + SEND_TO + ' from the Files app.'
     };
     $('sendTitle').textContent = T[state]; $('sendMsg').textContent = M[state];
     s.hidden = false; $('sendBtn').hidden = true;
