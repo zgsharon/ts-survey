@@ -451,6 +451,33 @@
   }
 
   // opts: {client, project, docTitle, line3, narrative, blocks:[{kind:'kv'|'list'|'signoff', ...}], data, photos:[{data, caption}]}
+
+  // Rough page count for the footer's stored NUMPAGES value (phone Word and previews show this; desktop Word recounts).
+  function estPages(blocks, nPhotos, hasNarr) {
+    const USABLE = 6.55, ROW = 0.235, LABEL = 0.33, PHOTO_ROW = 3.12;
+    const lines = (s, chars) => Math.max(1, Math.ceil(String(s == null ? '' : s).length / chars));
+    let y = 0;
+    (blocks || []).forEach(b => {
+      if (b.kind === 'kv') {
+        const pairs = (b.pairs || []).filter(p => p && p[1] != null && String(p[1]).trim() !== '' && String(p[1]).trim() !== '-');
+        if (!pairs.length) return;
+        y += LABEL;
+        for (let i = 0; i < pairs.length; i += 2) {
+          const n = Math.max(lines(pairs[i][0], 24), lines(pairs[i][1], 46), pairs[i + 1] ? Math.max(lines(pairs[i + 1][0], 24), lines(pairs[i + 1][1], 46)) : 1);
+          y += ROW + (n - 1) * 0.17;
+        }
+      } else if (b.kind === 'list') {
+        y += LABEL + ROW * (1 + (b.rows || []).length);
+      } else if (b.kind === 'signoff') {
+        y += LABEL + ROW + (b.note ? ROW + (lines(b.note, 100) - 1) * 0.17 : 0);
+      }
+    });
+    let pages = 1 + Math.floor(y / USABLE); y = y % USABLE;
+    if (hasNarr) y += 1.5;
+    y += 0.2;
+    for (let r = 0; r < Math.ceil(nPhotos / 2); r++) { if (y + PHOTO_ROW > USABLE) { pages++; y = 0; } y += PHOTO_ROW; }
+    return Math.max(1, pages);
+  }
   async function buildDocx(opts, templateB64, JSZipRef) {
     const JSZ = JSZipRef || root.JSZip;
     const zip = await JSZ.loadAsync(templateB64, { base64: true });
@@ -460,8 +487,9 @@
       .replace('{{LINE3}}', esc(opts.line3)).replace('{{DOCTITLE}}', esc(opts.docTitle));
     zip.file('word/header1.xml', hdr);
     const nPhotos = (opts.photos || []).length;
-    const pages = Math.max(1, 2 + Math.ceil(Math.ceil(nPhotos / 2) / 2));
+    const pages = estPages(opts.blocks, nPhotos, !!String(opts.narrative || '').trim());
     let ftr = await zip.file('word/footer1.xml').async('string');
+    ftr = ftr.replace(/<w:fldChar w:fldCharType="begin"\/>(?=(?:(?!<w:fldChar)[\s\S])*?NUMPAGES)/, '<w:fldChar w:fldCharType="begin" w:dirty="true"/>');
     zip.file('word/footer1.xml', ftr.replace('{{PAGES}}', String(pages)));
 
     // Custom document properties: every field, readable in Word (File > Info > Properties) and by the filing flow.
