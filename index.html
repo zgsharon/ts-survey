@@ -629,6 +629,8 @@
   function lc(s) { return String(s || '').charAt(0).toLowerCase() + String(s || '').slice(1); }
 
   // ---------- pipelines ----------
+  const LINE_NAMES = { 'JA1': 'Jordan Aqueduct Reach 1', 'JA2': 'Jordan Aqueduct Reach 2', 'JA3': 'Jordan Aqueduct Reach 3', 'AA3 - JA4': 'Alpine Aqueduct Reach 3, Jordan Aqueduct Reach 4', 'SWA1': 'Southwest Aqueduct Reach 1', 'SWA2': 'Southwest Aqueduct Reach 2' };
+  const OLD_LINES = { 'Jordan Aqueduct Reach 3': 'JA3', 'Jordan Aqueduct Reach 4': 'AA3 - JA4' };
   function pipelineList() { return splitList($('pipelines').value).concat(['Other']); }
   function renderPipelines(keep) {
     const sel = $('pipeline'); const cur = keep != null ? keep : sel.value;
@@ -636,7 +638,7 @@
     const list = pipelineList();
     if (cur && !list.includes(cur)) list.splice(list.length - 1, 0, cur);
     const blank = document.createElement('option'); blank.value = ''; blank.textContent = 'Pick the pipeline'; sel.appendChild(blank);
-    list.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o); });
+    list.forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = LINE_NAMES[p] ? p + ' (' + LINE_NAMES[p] + ')' : p; sel.appendChild(o); });
     if (cur && list.includes(cur)) sel.value = cur;
   }
   function pipelineText() { return $('pipeline').value === 'Other' ? $('pipelineOther').value.trim() : $('pipeline').value; }
@@ -651,7 +653,8 @@
   }
   function myFix() { const la = parseFloat($('lat').value), ln = parseFloat($('lng').value); return (gpsSource === 'GPS' || gpsSource === 'Pasted') && !isNaN(la) && !isNaN(ln) ? [la, ln] : null; }
   function recCurrent() { return recSel && REC[recSel.line] ? REC[recSel.line][recSel.i] : null; }
-  function recLabel(s) { return 'TS ' + s.id + (s.sta && s.sta !== s.id ? ' · Sta ' + s.sta : '') + (s.loc ? ' · ' + (s.loc.length > 48 ? s.loc.slice(0, 46) + '…' : s.loc) : ''); }
+  function tsName(s) { return s.nots ? (/^\d+\+\d/.test(s.id) ? 'Sta ' + s.id : s.id) : 'TS ' + s.id; }
+  function recLabel(s) { return tsName(s) + (s.sta && s.sta !== s.id ? ' · Sta ' + s.sta : '') + (s.loc && s.loc !== s.id ? ' · ' + (s.loc.length > 48 ? s.loc.slice(0, 46) + '…' : s.loc) : ''); }
   function renderRecs() {
     const sel = $('recPick'), line = $('pipeline').value, list = REC[line] || [];
     const haveRecs = Object.keys(REC).length > 0; $('recPickBox').hidden = !haveRecs; $('gpsRecHint').hidden = !haveRecs;
@@ -675,7 +678,7 @@
     if (!s) { card.hidden = true; card.innerHTML = ''; return; }
     const dl = document.createElement('dl'); dl.className = 'reccard'; dl.style.margin = '0';
     const put = (k, v) => { if (!v) return; const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); };
-    put('From our records', 'TS ' + s.id + (s.did && s.did !== s.id ? ' (District ID ' + s.did + ')' : '') + (s.sta ? ', station ' + s.sta : ''));
+    put('From our records', tsName(s) + (s.did && s.did !== s.id ? ' (District ID ' + s.did + ')' : '') + (s.sta ? ', station ' + s.sta : ''));
     put('Location', s.loc);
     put('Style', [s.style, s.type ? 'type ' + s.type : ''].filter(Boolean).join(', '));
     put('Wires on file', (s.w || []).join(', '));
@@ -713,10 +716,10 @@
     if (best && best.d <= NEAR_FT) {
       if (!useLine) renderPipelines(best.line), $('pipeline').value = best.line;
       applyRec(best.line, best.i, true); renderRecs();
-      toast('Closest station in our records: TS ' + REC[best.line][best.i].id + ' on ' + best.line + ', ' + fmtFt(best.d) + ' away. Change it if that is wrong.');
+      toast('Closest station in our records: ' + tsName(REC[best.line][best.i]) + ' on ' + best.line + ', ' + fmtFt(best.d) + ' away. Change it if that is wrong.');
     } else {
       renderRecs();
-      toast(best ? 'No station in our records within ' + NEAR_FT + ' ft' + (useLine ? ' on ' + useLine : '') + '. The closest is TS ' + REC[best.line][best.i].id + ' on ' + best.line + ', ' + fmtFt(best.d) + ' away. Pick it from the list if it is the one.' : 'No stations with coordinates on file for this line.');
+      toast(best ? 'No station in our records within ' + NEAR_FT + ' ft' + (useLine ? ' on ' + useLine : '') + '. The closest is ' + tsName(REC[best.line][best.i]) + ' on ' + best.line + ', ' + fmtFt(best.d) + ' away. Pick it from the list if it is the one.' : 'No stations with coordinates on file for this line.');
     }
   }
 
@@ -1068,6 +1071,7 @@
   function restore(s, keepDate) {
     if (!s) return;
     Object.keys(s.seg || {}).forEach(k => { if (document.querySelector('[data-seg="' + k + '"]')) setSeg(k, s.seg[k]); });
+    if (s.text && OLD_LINES[s.text.pipeline]) s.text.pipeline = OLD_LINES[s.text.pipeline];
     if (s.text && s.text.pipeline) renderPipelines(s.text.pipeline);
     TEXT_IDS.forEach(id => { if (s.text && id in s.text) { if (!keepDate && id === 'date') return; $(id).value = s.text[id]; } });
     if (s.tables) Object.keys(TABLES).forEach(k => { tables[k] = Array.isArray(s.tables[k]) ? s.tables[k].map(r => Object.assign(blankRow(k), r)) : []; });
