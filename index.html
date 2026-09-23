@@ -997,6 +997,7 @@
       return { blob, buf: await blob.arrayBuffer(), thumb: t.toDataURL('image/jpeg', 0.7), caption, custom: '', slot };
     } finally { URL.revokeObjectURL(url); }
   }
+  const photoJobs = new Set(); // photos still being shrunk. Make report waits for these.
   function orderedPhotos() {
     const out = [];
     SLOT_ORDER.forEach(k => photos.filter(p => p.slot === k).forEach(p => out.push(p)));
@@ -1014,8 +1015,11 @@
         const files = Array.from(e.target.files || []); e.target.value = '';
         if (!files.length) return;
         setStatus('Preparing ' + files.length + ' photo' + (files.length > 1 ? 's' : '') + '…');
-        for (const f of files) { try { photos.push(await processFile(f, key, cap)); } catch (err) { toast('Could not read one of the photos (' + ((err && err.message) || 'unknown') + ').'); } }
-        renderPhotos();
+        const job = (async () => {
+          for (const f of files) { try { photos.push(await processFile(f, key, cap)); } catch (err) { toast('Could not read one of the photos (' + ((err && err.message) || 'unknown') + ').'); } }
+          renderPhotos();
+        })();
+        photoJobs.add(job); try { await job; } finally { photoJobs.delete(job); }
       });
     });
   }
@@ -1262,7 +1266,7 @@
     $('saveFiles').className = state === 'unsupported' ? 'btn primary' : 'btn small';
     const T = { ready: 'Report ready', sent: 'Handed to Mail', cancelled: 'Not sent yet', error: 'Could not open the share menu', unsupported: inClaude ? 'Mail cannot open from this copy' : 'This browser cannot share files' };
     const M = {
-      ready: name + '. Tap Send by email, pick Mail, and send it to ' + SEND_TO + '. Copy yourself.',
+      ready: name + ' (' + photoCountText() + '). Tap Send by email, pick Mail, and send it to ' + SEND_TO + '. Copy yourself.',
       sent: 'Opened Mail at ' + clock() + '. If you tapped Send there, it is on its way. The copy to yourself showing up in your inbox confirms it went.',
       cancelled: 'The share menu closed without sending. Tap Try again.',
       error: 'The phone said: ' + ((detail && (detail.message || detail.name)) || 'unknown') + '. Tap Try again. If it keeps failing, save the files and attach them to an email from the Files app.',
@@ -1271,6 +1275,7 @@
     $('sendTitle').textContent = T[state]; $('sendMsg').textContent = M[state];
     s.hidden = false; $('sendBtn').hidden = true;
   }
+  function photoCountText() { const n = lastBuilt ? lastBuilt.photoCount : 0; return n ? n + ' photo' + (n > 1 ? 's' : '') : 'no photos'; }
   function hideSheet() { $('sendSheet').hidden = true; $('sendBtn').hidden = !lastBuilt; }
   function markSent() {
     if (!lastBuilt) return;
@@ -1347,6 +1352,10 @@
     if (!$('inspector').value.trim()) { toast('Type your name at the top first.'); $('inspector').focus(); $('inspector').scrollIntoView({ block: 'center' }); return; }
     if (!$('pipeline').value) { toast('Pick the pipeline first.'); $('pipeline').focus(); $('pipeline').scrollIntoView({ block: 'center' }); return; }
     if ($('pipeline').value === 'Other' && !$('pipelineOther').value.trim()) { toast('Type which pipeline or system this is.'); $('pipelineOther').focus(); return; }
+    if (photoJobs.size) {
+      $('makeBtn').disabled = true; setStatus('Finishing the photos…');
+      try { await Promise.all([...photoJobs]); } finally { $('makeBtn').disabled = false; }
+    }
     if (!photos.length && !noPhotoOk) { noPhotoOk = true; toast('No photos added. Tap Make report again to build it without photos.'); setTimeout(() => { noPhotoOk = false; }, 6000); return; }
     noPhotoOk = false;
     $('makeBtn').disabled = true; setStatus('Building the Word file…');
@@ -1361,7 +1370,7 @@
       if (typeof JSZip === 'undefined') throw new Error('the Word file builder did not load. Check the phone has signal, then reload the page');
       const blob = await buildDocx(opts, TEMPLATE_B64);
       const filename = data.ReportFile;
-      lastBuilt = { docxBlob: blob, docxName: filename, jsonText: JSON.stringify(data, null, 2), jsonName: data.ReportName + '.json' };
+      lastBuilt = { photoCount: opts.photos.length, docxBlob: blob, docxName: filename, jsonText: JSON.stringify(data, null, 2), jsonName: data.ReportName + '.json' };
       const log = readLog();
       const snap = snapshot(); snap.madeName = '';
       log.push({ station: data.TestStationIdField, pipeline: data.Pipeline, date: data.Date, made: data.MadeOn, flag: seg.signoff !== 'doc', signoff: data.SignOff, photos: photos.length, data, snapshot: snap });
